@@ -62,7 +62,13 @@ public class Function {
 
                 EmailMessage message = new EmailMessage()
                         .setSenderAddress(senderEmail)
-                        .setToRecipients(new EmailAddress("admin@escola.com")) // E-mail do administrador
+                        .setToRecipients(
+                                new EmailAddress("admin@escola.com"),
+                                new EmailAddress("franciscosouzalima@gmail.com"),
+                                new EmailAddress("fuzetirafael@gmail.com"),
+                                new EmailAddress("gustavosoaresbomfim@hotmail.com"),
+                                new EmailAddress("fernanda_o_ferreira@hotmail.com")
+                        )
                         .setSubject("ALERTA URGENTE: Feedback de " + dto.getAluno())
                         .setBodyPlainText("Detalhes do Feedback:\n" +
                                 "Aluno: " + dto.getAluno() + "\n" +
