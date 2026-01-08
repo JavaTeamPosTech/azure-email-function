@@ -17,10 +17,6 @@ import com.microsoft.azure.functions.annotation.HttpTrigger;
 
 
 import java.util.Optional;
-
-/**
- * Azure Functions with HTTP Trigger.
- */
 public class Function {
 
     @FunctionName("enviarEmail")
@@ -33,32 +29,40 @@ public class Function {
             HttpRequestMessage<Optional<EmailDTO>> request,
             final ExecutionContext context) {
 
-        context.getLogger().info("Iniciando processamento de feedback nativo Azure ACS.");
+        context.getLogger().info("--- INÍCIO DO PROCESSAMENTO ---");
 
-        // 1. Obtém o corpo da requisição (JSON -> DTO)
         EmailDTO dto = request.getBody().orElse(null);
 
-        // Validação básica
+        // LOG 1: Verificar se o JSON chegou corretamente
+        if (dto != null) {
+            context.getLogger().info("Payload recebido: Aluno=" + dto.getAluno() + ", Prioridade=" + dto.getPrioridade());
+        } else {
+            context.getLogger().warning("Payload está VAZIO ou nulo.");
+        }
+
         if (dto == null || dto.getPrioridade() == null || dto.getAluno() == null) {
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
                     .body("Payload inválido: aluno e prioridade são obrigatórios.")
                     .build();
         }
 
-        // 2. Configuração do Cliente via Managed Identity
-        // Certifique-se que ACS_ENDPOINT e SENDER_EMAIL estejam no Application Settings da UI
+        // 2. LOG 2: Verificar Variáveis de Ambiente (Onde está o seu erro atual)
         String endpoint = System.getenv("ACS_ENDPOINT");
         String senderEmail = System.getenv("SENDER_EMAIL");
 
+        context.getLogger().info("Configurações lidas:");
+        context.getLogger().info(">> ACS_ENDPOINT: " + (endpoint != null ? "CONFIGURADO" : "NULO"));
+        context.getLogger().info(">> SENDER_EMAIL: " + (senderEmail != null ? senderEmail : "NULO (ERRO AQUI)"));
+
         try {
+            context.getLogger().info("Criando cliente EmailClient...");
             EmailClient emailClient = new EmailClientBuilder()
                     .endpoint(endpoint)
                     .credential(new DefaultAzureCredentialBuilder().build())
                     .buildClient();
 
-            // 3. Lógica de Negócio: Notificação de Urgência
             if ("urgente".equalsIgnoreCase(dto.getPrioridade())) {
-                context.getLogger().info("Prioridade URGENTE detectada para: " + dto.getAluno());
+                context.getLogger().info("Executando lógica de envio de e-mail urgente...");
 
                 EmailMessage message = new EmailMessage()
                         .setSenderAddress(senderEmail)
@@ -75,11 +79,12 @@ public class Function {
                                 "Nota: " + dto.getNota() + "\n" +
                                 "Comentário: " + dto.getComentario());
 
-                // O envio no ACS é uma operação de longa duração (LRO), usamos o poller
+                context.getLogger().info("Enviando para o ACS... (Aguardando poller)");
                 SyncPoller<EmailSendResult, EmailSendResult> poller = emailClient.beginSend(message);
                 poller.waitForCompletion();
-
-                context.getLogger().info("E-mail enviado com sucesso via ACS.");
+                context.getLogger().info("Resposta do ACS recebida com sucesso.");
+            } else {
+                context.getLogger().info("Prioridade '" + dto.getPrioridade() + "' não disparou e-mail.");
             }
 
             return request.createResponseBuilder(HttpStatus.OK)
@@ -87,7 +92,10 @@ public class Function {
                     .build();
 
         } catch (Exception e) {
-            context.getLogger().severe("Erro crítico na Function: " + e.getMessage());
+            // LOG 3: Captura de erro detalhada
+            context.getLogger().severe("FALHA CRÍTICA: " + e.getMessage());
+            e.printStackTrace(); // Isso ajuda a ver a linha exata do erro no log
+
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Erro interno ao processar e-mail: " + e.getMessage())
                     .build();
